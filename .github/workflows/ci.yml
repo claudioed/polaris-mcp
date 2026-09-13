@@ -127,7 +127,8 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --quiet . pip-audit
-          pip-audit --strict --skip-editable
+          pip freeze | grep -vi 'polaris[-_]mcp' > requirements-audit.txt
+          pip-audit --strict -r requirements-audit.txt
 
   release:
     name: Release
