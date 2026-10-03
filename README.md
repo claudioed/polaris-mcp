@@ -172,7 +172,7 @@ Any host that speaks streamable HTTP can point at `http://localhost:8000/mcp`. o
 
 ### Deploying released images
 
-Every release is pushed to GHCR as `ghcr.io/claudioed/polaris-mcp:vX.Y.Z` (plus `latest`). To run
+Every release is pushed to GHCR as `ghcr.io/polaris-harness/polaris-mcp:vX.Y.Z` (plus `latest`). To run
 a released version instead of building from source, set `POLARIS_MCP_TAG` in `.env` and:
 
 ```sh
@@ -220,7 +220,7 @@ pull requests (to `main`/`develop`), and a weekly schedule with:
 
 After all gates pass on `main`, the workflow computes the next patch version from git tags, tags the
 commit, and creates a GitHub release with the sdist and wheel attached, and publishes the container
-image to GHCR (`ghcr.io/claudioed/polaris-mcp:vX.Y.Z` and `:latest`). Publishing to PyPI via
+image to GHCR (`ghcr.io/polaris-harness/polaris-mcp:vX.Y.Z` and `:latest`). Publishing to PyPI via
 [trusted publishing](https://docs.pypi.org/trusted-publishers/) is opt-in: set the repository
 variable `PYPI_PUBLISH=true` and configure a `pypi` environment (with this repository as a trusted
 publisher) to enable it.

@@ -263,5 +263,5 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/claudioed/polaris-mcp:latest
-            ghcr.io/claudioed/polaris-mcp:${{ needs.release.outputs.version }}
+            ghcr.io/polaris-harness/polaris-mcp:latest
+            ghcr.io/polaris-harness/polaris-mcp:${{ needs.release.outputs.version }}
