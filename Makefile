@@ -1,4 +1,4 @@
-.PHONY: install lint format test coverage build smoke audit clean
+.PHONY: install lint format test coverage build smoke audit image clean
 
 install:
 	python3 -m pip install -e '.[dev]'
@@ -15,7 +15,7 @@ test:
 	pytest
 
 coverage:
-	pytest --cov=polaris_mcp --cov-report=term-missing --cov-fail-under=90
+	pytest --cov=polaris_mcp --cov-report=term-missing --cov-fail-under=95
 
 build:
 	python -m build
@@ -30,6 +30,9 @@ smoke: build
 
 audit:
 	pip-audit --skip-editable
+
+image:
+	docker build -t polaris-mcp:local .
 
 clean:
 	rm -rf dist build src/*.egg-info .smoke-venv .pytest_cache .ruff_cache .coverage

@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           pytest --cov=polaris_mcp --cov-report=term-missing --cov-report=xml \
-            --cov-fail-under=90
+            --cov-fail-under=95
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -114,6 +114,37 @@ jobs:
           .smoke-venv/bin/polaris-mcp --help
           .smoke-venv/bin/python scripts/smoke_stdio.py
 
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name != 'schedule' && github.ref != 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: polaris-mcp:smoke
+          platforms: linux/amd64
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Exercise the container over streamable HTTP
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet mcp httpx
+          docker run -d --name polaris-mcp-smoke \
+            -p 127.0.0.1:8765:8000 \
+            -e POLARIS_BASE_URL=http://localhost:8080 \
+            -e POLARIS_OIDC_CLIENT_ID=smoke-client-id \
+            polaris-mcp:smoke
+          trap 'docker rm -f polaris-mcp-smoke' EXIT
+          SMOKE_SPAWN=0 SMOKE_URL=http://127.0.0.1:8765/mcp python scripts/smoke_http.py
+
   vuln:
     name: Dependency vulnerability scan
     runs-on: ubuntu-latest
@@ -136,6 +167,8 @@ jobs:
     timeout-minutes: 15
     needs: [lint, test, package, smoke, vuln]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     permissions:
       contents: write
     steps:
@@ -202,3 +235,33 @@ jobs:
           python -m build
       - name: Publish (trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  docker-release:
+    name: Publish image to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [release]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.release.outputs.version }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push versioned image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/claudioed/polaris-mcp:latest
+            ghcr.io/claudioed/polaris-mcp:${{ needs.release.outputs.version }}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from .config import Settings
 from .tools import register_all
 
 INSTRUCTIONS = """Polaris is a squad-owned architectural fitness-function control plane: squads define
@@ -25,8 +26,13 @@ Conventions for these tools:
 """
 
 
-def create_server() -> FastMCP:
-    """Build the FastMCP server with all Polaris tools registered."""
-    mcp = FastMCP("polaris", instructions=INSTRUCTIONS)
+def create_server(settings: Settings | None = None) -> FastMCP:
+    """Build the FastMCP server with all Polaris tools registered.
+
+    `settings` supplies the HTTP bind address and port for the streamable-http
+    transport (ignored for stdio); without it the FastMCP defaults apply.
+    """
+    options = {"host": settings.serve_host, "port": settings.serve_port} if settings else {}
+    mcp = FastMCP("polaris", instructions=INSTRUCTIONS, **options)
     register_all(mcp)
     return mcp
