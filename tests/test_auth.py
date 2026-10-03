@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -30,6 +31,11 @@ class TestParseClaims:
             with pytest.raises(AuthError):
                 parse_id_token_claims(bad)
 
+    def test_non_object_payload_raises(self):
+        payload = b64url(json.dumps(["not", "an", "object"]).encode())
+        with pytest.raises(AuthError, match="not a JSON object"):
+            parse_id_token_claims(f"x.{payload}.sig")
+
 
 class TestCredentialStorage:
     def test_save_and_load_roundtrip(self, settings):
@@ -49,6 +55,18 @@ class TestCredentialStorage:
         settings.credentials_file.write_text("{nope")
         with pytest.raises(AuthError, match="polaris-mcp login"):
             load_credentials(settings)
+
+    @pytest.mark.parametrize("payload", [{}, {"refresh_token": ""}, {"refresh_token": 42}])
+    def test_invalid_refresh_token_rejected(self, settings, payload):
+        settings.credentials_file.write_text(json.dumps(payload))
+        with pytest.raises(AuthError, match="invalid"):
+            load_credentials(settings)
+
+    def test_non_string_email_dropped(self, settings):
+        settings.credentials_file.write_text(
+            json.dumps({"refresh_token": "rt", "email": ["not", "a", "string"]})
+        )
+        assert load_credentials(settings) == Credentials(refresh_token="rt", email=None)
 
 
 class TestTokenManager:
@@ -87,6 +105,25 @@ class TestTokenManager:
         manager._id_token = "garbage"
         assert await manager.get_id_token() == fresh
 
+    async def test_cached_token_without_exp_is_treated_as_expiring(self, settings, respx_mock):
+        fresh = make_id_token()
+        respx_mock.post(TOKEN_URL).respond(json={"id_token": fresh})
+        manager = TokenManager(settings)
+        no_exp = b64url(json.dumps({"email": "user@example.com"}).encode())
+        manager._id_token = f"x.{no_exp}.sig"
+        assert await manager.get_id_token() == fresh
+
+    async def test_refresh_sends_client_secret_when_configured(self, settings, respx_mock):
+        from dataclasses import replace
+
+        route = respx_mock.post(TOKEN_URL).respond(json={"id_token": make_id_token()})
+        secured = replace(settings, oidc_client_secret="s3cret")
+        manager = TokenManager(secured)
+        await manager.get_id_token()
+        body = route.calls.last.request.content.decode()
+        assert "client_secret=s3cret" in body
+        assert "grant_type=refresh_token" in body
+
 
 class TestLogin:
     def test_login_requires_client_id(self, settings):
@@ -116,6 +153,8 @@ class TestSupportValidation:
             require_object("create", "definition", ["not", "a", "dict"], "name")
         with pytest.raises(ToolError, match="'definition' is required"):
             require_object("create", "definition", None, "name")
+        with pytest.raises(ToolError, match="'event_ids' is required"):
+            require_list("acknowledge", "event_ids", None)
 
     def test_optional_body_drops_nones(self):
         from polaris_mcp.tools._support import optional_body

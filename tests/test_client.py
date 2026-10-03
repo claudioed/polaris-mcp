@@ -148,6 +148,12 @@ class TestPagination:
         assert "limit=25" in str(route.calls.last.request.url)
 
 
+class TestLifecycle:
+    async def test_aclose_is_idempotent(self, client):
+        await client.aclose()
+        await client.aclose()
+
+
 class TestIfMatch:
     async def test_explicit_revision_skips_get(self, client, respx_mock):
         get_route = respx_mock.get(f"{API_BASE}/api/v1/fitness-functions/ff").respond(json={"revision": 99})
@@ -163,3 +169,8 @@ class TestIfMatch:
         headers = await resolve_if_match(client, "/fitness-functions/ff", None)
         await client.post("/fitness-functions/ff/versions", json={}, headers=headers)
         assert post.calls.last.request.headers["If-Match"] == '"3"'
+
+    async def test_aggregate_without_revision_raises(self, client, respx_mock):
+        respx_mock.get(f"{API_BASE}/api/v1/fitness-functions/ff").respond(json={"id": "ff"})
+        with pytest.raises(PolarisError, match="NO_REVISION"):
+            await resolve_if_match(client, "/fitness-functions/ff", None)
