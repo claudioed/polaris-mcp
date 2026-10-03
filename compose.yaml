@@ -4,7 +4,7 @@
 services:
   polaris-mcp:
     build: .
-    image: ghcr.io/claudioed/polaris-mcp:${POLARIS_MCP_TAG:-local}
+    image: ghcr.io/polaris-harness/polaris-mcp:${POLARIS_MCP_TAG:-local}
     restart: unless-stopped
     extra_hosts:
       # Lets the container reach a Polaris API on the Docker host listening on
