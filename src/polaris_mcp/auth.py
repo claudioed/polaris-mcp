@@ -182,14 +182,17 @@ class _LoginServer(ThreadingHTTPServer):
         self.result: dict[str, str] | None = None
 
 
-def _start_callback_server(state: str) -> tuple[_LoginServer, int]:
+def _start_callback_server(state: str, bind_host: str) -> tuple[_LoginServer, int]:
     for port in (PREFERRED_CALLBACK_PORT, 0):
         try:
-            server = _LoginServer(("127.0.0.1", port), state)
+            server = _LoginServer((bind_host, port), state)
             return server, server.server_address[1]
         except OSError:
             continue
-    raise AuthError("Could not bind a loopback port for the OAuth redirect")
+    raise AuthError(
+        "Could not bind the OAuth redirect listener "
+        f"(POLARIS_CALLBACK_BIND_HOST={bind_host!r}); check the address and free ports"
+    )
 
 
 def _exchange_code(settings: Settings, code: str, redirect_uri: str, code_verifier: str) -> dict[str, Any]:
@@ -226,7 +229,7 @@ def run_login(settings: Settings, *, open_browser: bool = True, on_ready: Any = 
         base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest()).rstrip(b"=").decode()
     )
     state = secrets.token_urlsafe(24)
-    server, port = _start_callback_server(state)
+    server, port = _start_callback_server(state, settings.callback_bind_host)
     redirect_uri = f"http://localhost:{port}"
     authorize_url = (
         GOOGLE_AUTH_URI

@@ -1,0 +1,41 @@
+# Containerized polaris-mcp speaking MCP streamable HTTP. Copy .env.example to
+# .env first (POLARIS_OIDC_CLIENT_ID is required), then see README.md §
+# "Deploy with Docker Compose" for the one-time `login` flow and client wiring.
+services:
+  polaris-mcp:
+    build: .
+    image: ghcr.io/claudioed/polaris-mcp:${POLARIS_MCP_TAG:-local}
+    restart: unless-stopped
+    extra_hosts:
+      # Lets the container reach a Polaris API on the Docker host listening on
+      # all interfaces. A polaris compose stack publishes loopback-only — join
+      # its network instead (see README.md, "Deploy with Docker Compose").
+      - "host.docker.internal:host-gateway"
+    # To join a polaris compose stack on the same host, uncomment the service
+    # networks block below and the top-level definition, then set
+    # POLARIS_BASE_URL=http://polaris:8080 in .env:
+    # networks:
+    #   - polaris
+    environment:
+      POLARIS_BASE_URL: ${POLARIS_BASE_URL:-http://host.docker.internal:8080}
+      POLARIS_OIDC_CLIENT_ID: ${POLARIS_OIDC_CLIENT_ID:?set POLARIS_OIDC_CLIENT_ID in .env}
+      POLARIS_OIDC_CLIENT_SECRET: ${POLARIS_OIDC_CLIENT_SECRET:-}
+      POLARIS_INGEST_API_KEY: ${POLARIS_INGEST_API_KEY:-}
+      POLARIS_AUTHORIZED_EMAIL: ${POLARIS_AUTHORIZED_EMAIL:-}
+    ports:
+      # MCP streamable HTTP at http://localhost:${POLARIS_MCP_HTTP_PORT}/mcp.
+      # Loopback-only on purpose: the endpoint has no auth of its own. Front it
+      # with a TLS edge (e.g. the polaris Caddy service) before exposing it
+      # off-host.
+      - "127.0.0.1:${POLARIS_MCP_HTTP_PORT:-8000}:8000"
+    volumes:
+      # Survives upgrades; holds the Google refresh token written by `login`.
+      - polaris-mcp-data:/data
+
+volumes:
+  polaris-mcp-data:
+
+# networks:
+#   polaris:
+#     name: polaris_default
+#     external: true

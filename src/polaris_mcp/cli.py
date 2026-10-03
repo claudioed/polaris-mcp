@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from dataclasses import replace
 
 import httpx
 
@@ -18,9 +19,31 @@ def build_parser() -> argparse.ArgumentParser:
         description="MCP server for the Polaris architectural fitness-function control plane.",
     )
     sub = parser.add_subparsers(dest="command")
-    sub.add_parser("login", help="connect your Google account (OAuth code + PKCE, one time)")
+    login = sub.add_parser("login", help="connect your Google account (OAuth code + PKCE, one time)")
+    login.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="print the authorize URL instead of opening a browser (headless/container login)",
+    )
     sub.add_parser("status", help="show credential, auth, and Polaris health status")
-    sub.add_parser("serve", help="run the MCP server over stdio (default)")
+    serve = sub.add_parser("serve", help="run the MCP server (stdio by default; see --transport)")
+    serve.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http"),
+        default=None,
+        help="MCP transport (default: POLARIS_MCP_TRANSPORT, or stdio)",
+    )
+    serve.add_argument(
+        "--host",
+        default=None,
+        help="bind address for streamable-http (default: POLARIS_MCP_HOST, or 127.0.0.1)",
+    )
+    serve.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="listen port for streamable-http (default: POLARIS_MCP_PORT, or 8000)",
+    )
     return parser
 
 
@@ -56,24 +79,36 @@ async def _cmd_status(settings: Settings) -> int:
     return 0 if ok else 1
 
 
+def _cmd_serve(settings: Settings, args: argparse.Namespace) -> int:
+    """Run the MCP server, applying --transport/--host/--port overrides to the settings."""
+    port = getattr(args, "port", None)
+    if port is not None and not 1 <= port <= 65535:
+        print(f"error: --port must be between 1 and 65535, got {port}", file=sys.stderr)
+        return 1
+    resolved = settings
+    if getattr(args, "transport", None):
+        resolved = replace(resolved, serve_transport=args.transport)
+    if getattr(args, "host", None):
+        resolved = replace(resolved, serve_host=args.host)
+    if port is not None:
+        resolved = replace(resolved, serve_port=port)
+    from .server import create_server
+
+    create_server(resolved).run(transport=resolved.serve_transport)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         settings = load_settings()
         if args.command == "login":
-            run_login(settings)
+            run_login(settings, open_browser=not args.no_browser)
             return 0
         if args.command == "status":
             return asyncio.run(_cmd_status(settings))
     except (AuthError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    from .server import create_server
-
-    create_server().run()
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    return _cmd_serve(settings, args)
